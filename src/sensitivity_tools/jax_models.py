@@ -15,8 +15,8 @@ class BaseModel(ABC):
         self.nu = nu  # number of control inputs
         self.np = np
         if jnp.array_equal(input_bounds, (-jnp.inf, jnp.inf)):
-            self.input_min = input_bounds[0]*jnp.ones(self.nu, dtype=jnp.float32)
-            self.input_max = input_bounds[1]*jnp.ones(self.nu, dtype=jnp.float32)
+            self.input_min = input_bounds[0] * jnp.ones(self.nu, dtype=jnp.float32)
+            self.input_max = input_bounds[1] * jnp.ones(self.nu, dtype=jnp.float32)
         else:
             self.input_min = input_bounds[0]
             self.input_max = input_bounds[1]
@@ -42,16 +42,18 @@ class BaseModel(ABC):
         pass
 
 
-
 class ModelParametric(BaseModel):
-    def __init__(self, model_dynamics_parametric,
-                 nq: int,
-                 nv: int,
-                 nu: int,
-                 np=0,
-                 input_bounds=(-jnp.inf, jnp.inf),
-                 integrator_type="si_euler",
-                 integrator_params: Optional[Dict] = None):
+    def __init__(
+        self,
+        model_dynamics_parametric,
+        nq: int,
+        nv: int,
+        nu: int,
+        np=0,
+        input_bounds=(-jnp.inf, jnp.inf),
+        integrator_type="si_euler",
+        integrator_params: Optional[Dict] = None,
+    ):
 
         super().__init__(nq, nv, nu, np, input_bounds)
 
@@ -66,10 +68,12 @@ class ModelParametric(BaseModel):
         elif integrator_type == MODEL_PARAMETRIC_INTEGRATOR_TYPES[3]:
             self.integrate_parametric = model_dynamics_parametric
         else:
-            raise ValueError("""
+            raise ValueError(
+                """
             Integrator type not supported.
             Available types: si_euler, euler, rk4, custom_discrete
-            """)
+            """
+            )
 
         self.partial_sens_all = jax.jacfwd(self.integrate_parametric, argnums=(0, 1, 2))
 
@@ -78,10 +82,10 @@ class ModelParametric(BaseModel):
         One-step integration of the dynamics using Rk4 method
         """
         k1 = self.dynamics_parametric(state, inputs, params)
-        k2 = self.dynamics_parametric(state + k1*dt/2., inputs, params)
-        k3 = self.dynamics_parametric(state + k2 * dt / 2., inputs, params)
+        k2 = self.dynamics_parametric(state + k1 * dt / 2.0, inputs, params)
+        k3 = self.dynamics_parametric(state + k2 * dt / 2.0, inputs, params)
         k4 = self.dynamics_parametric(state + k3 * dt, inputs, params)
-        return state + (dt/6.) * (k1 + 2. * k2 + 2. * k3 + k4)
+        return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
     def integrate_euler(self, state, inputs, params, dt: float):
         """
@@ -94,10 +98,17 @@ class ModelParametric(BaseModel):
         Semi-implicit Euler integration.
         As of now this is probably implemented inefficiently because the whole dynamics is evaluated two times.
         """
-        v_kp1 = state[self.nq:] + dt * self.dynamics_parametric(state, inputs, params)[self.nq:]
-        return jnp.concatenate([
-                    state[:self.nq] + dt * self.dynamics_parametric(jnp.concatenate([state[:self.nq], v_kp1]), inputs, params)[:self.nq],
-                    v_kp1])
+        v_kp1 = state[self.nq :] + dt * self.dynamics_parametric(state, inputs, params)[self.nq :]
+        return jnp.concatenate(
+            [
+                state[: self.nq]
+                + dt
+                * self.dynamics_parametric(
+                    jnp.concatenate([state[: self.nq], v_kp1]), inputs, params
+                )[: self.nq],
+                v_kp1,
+            ]
+        )
 
     def sensitivity_step(self, state, inputs, params, state_sensitivity, input_sensitivity, dt):
 
@@ -110,13 +121,16 @@ class ModelParametric(BaseModel):
 
 
 class Model(ModelParametric):
-    def __init__(self, model_dynamics,
-                 nq: int,
-                 nv: int,
-                 nu: int,
-                 nominal_parameters=[],
-                 input_bounds=(-jnp.inf, jnp.inf),
-                 integrator_type="si_euler"):
+    def __init__(
+        self,
+        model_dynamics,
+        nq: int,
+        nv: int,
+        nu: int,
+        nominal_parameters=[],
+        input_bounds=(-jnp.inf, jnp.inf),
+        integrator_type="si_euler",
+    ):
         """
         :param model_dynamics: Should have signature (state, inputs, params)
         :param nq: Number of configuration variables
@@ -127,7 +141,9 @@ class Model(ModelParametric):
         :param integrator_type: Available integrators are [si_euler, euler, rk4, custom_discrete]
         """
 
-        super().__init__(model_dynamics, nq, nv, nu, len(nominal_parameters), input_bounds, integrator_type)
+        super().__init__(
+            model_dynamics, nq, nv, nu, len(nominal_parameters), input_bounds, integrator_type
+        )
 
         self.nominal_parameters = nominal_parameters
 
@@ -135,5 +151,3 @@ class Model(ModelParametric):
 
     def integrate(self, state, inputs, dt):
         return self.integrate_parametric(state, inputs, self.nominal_parameters, dt)
-
-

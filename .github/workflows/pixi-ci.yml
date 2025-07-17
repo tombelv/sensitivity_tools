@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]  # Removed windows-latest to match pixi.toml platforms
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.13']
 
     steps:
     - uses: actions/checkout@v4
@@ -25,28 +25,28 @@ jobs:
         pixi-version: latest
         
     - name: Install dependencies
-      run: pixi install
+      run: pixi install -e dev
       
     - name: Install package in development mode
-      run: pixi run install-dev
+      run: pixi run -e dev install-dev
       
     - name: Run tests
-      run: pixi run test
+      run: pixi run -e dev test
       
     - name: Run tests with coverage
-      run: pixi run test-cov
+      run: pixi run -e dev test-cov
       
     - name: Verify installation
-      run: pixi run verify
+      run: pixi run -e dev verify
       
     - name: Run example
-      run: pixi run example
+      run: pixi run -e dev example
       
     - name: Check code formatting
-      run: pixi run format --check
+      run: pixi run -e dev format --check
       
     - name: Type checking
-      run: pixi run type-check
+      run: pixi run -e dev type-check
       
   test-backends:
     runs-on: ubuntu-latest
@@ -81,10 +81,10 @@ jobs:
         pixi-version: latest
         
     - name: Install dependencies
-      run: pixi install
+      run: pixi install -e dev
       
     - name: Build package
-      run: pixi run build
+      run: pixi run -e dev build
       
     - name: Store build artifacts
       uses: actions/upload-artifact@v3

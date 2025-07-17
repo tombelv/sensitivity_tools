@@ -34,14 +34,14 @@ def ellipsoid_radius(sensitivity, scaling_matrix, direction=None):
 def ellipsoid_radii(sensitivity, scaling_matrix):
     """
     Compute ellipsoid radii along all coordinate axes.
-    
+
     Parameters
     ----------
     sensitivity : numpy.ndarray
         Sensitivity matrix (Pi)
     scaling_matrix : numpy.ndarray
         Scaling/weighting matrix (W)
-        
+
     Returns
     -------
     numpy.ndarray
@@ -53,7 +53,7 @@ def ellipsoid_radii(sensitivity, scaling_matrix):
 def integrate_rk4_function(funct, state, inputs, params, time, dt):
     """
     One-step integration of the dynamics using RK4 method
-    
+
     Parameters
     ----------
     funct : callable
@@ -68,14 +68,14 @@ def integrate_rk4_function(funct, state, inputs, params, time, dt):
         Current time
     dt : float
         Time step
-        
+
     Returns
     -------
     array-like
         Next state after integration
     """
     k1 = funct(state, inputs, params, time)
-    k2 = funct(state + k1 * dt / 2., inputs, params, time + dt / 2)
-    k3 = funct(state + k2 * dt / 2., inputs, params, time + dt / 2)
+    k2 = funct(state + k1 * dt / 2.0, inputs, params, time + dt / 2)
+    k3 = funct(state + k2 * dt / 2.0, inputs, params, time + dt / 2)
     k4 = funct(state + k3 * dt, inputs, params, time + dt)
-    return state + (dt / 6.) * (k1 + 2. * k2 + 2. * k3 + k4)
+    return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)

@@ -13,6 +13,7 @@ from .utils import ellipsoid_radius, ellipsoid_radii, integrate_rk4_function
 # JAX implementation
 try:
     from . import jax_models
+
     _JAX_AVAILABLE = True
 except ImportError:
     jax_models = None
@@ -22,6 +23,7 @@ except ImportError:
 try:
     from . import casadi_models
     from .casadi_models import ellipsoid_radii_casadi
+
     _CASADI_AVAILABLE = True
 except ImportError:
     casadi_models = None
@@ -31,6 +33,7 @@ except ImportError:
 try:
     from . import torch_models
     from .torch_models import ellipsoid_radius_torch, ellipsoid_radii_torch
+
     _PYTORCH_AVAILABLE = True
 except ImportError:
     torch_models = None
@@ -42,7 +45,7 @@ __all__ = [
     "ellipsoid_radii",
     "integrate_rk4_function",
     "jax_models",
-    "casadi_models", 
+    "casadi_models",
     "torch_models",
 ]
 
