@@ -4387,7 +4387,7 @@ packages:
 - pypi: ./
   name: sensitivity-tools
   version: 0.1.0
-  sha256: adea2bce0d31b03f4d5f4313f5fa11ec39312f2d6a7576f1dd8b7be3630c78b0
+  sha256: 71e98370fefaff9ecabbef97c01c67886fdb00d56090b4fe17f720301c0aa37c
   requires_dist:
   - numpy>=1.20.0
   - casadi>=3.6.0 ; extra == 'all'
@@ -4405,7 +4405,7 @@ packages:
   - jax>=0.4.0 ; extra == 'jax'
   - jaxlib>=0.4.0 ; extra == 'jax'
   - torch>=1.12.0 ; extra == 'torch'
-  requires_python: '>=3.8'
+  requires_python: '>=3.10'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/setuptools-80.9.0-pyhff2d567_0.conda
   sha256: 972560fcf9657058e3e1f97186cc94389144b46dbdf58c807ce62e83f977e863
