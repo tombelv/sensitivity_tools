@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]  # Removed windows-latest to match pixi.toml platforms
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
     - uses: actions/checkout@v4
@@ -64,7 +64,8 @@ jobs:
         
     - name: Test ${{ matrix.backend }} backend
       run: |
-        pixi shell ${{ matrix.backend }} --no-capture-output --activate "pip install -e . && python verify_install.py"
+        pixi run -e ${{ matrix.backend }} install-dev
+        pixi run -e ${{ matrix.backend }} verify
         
   build:
     needs: [test, test-backends]
