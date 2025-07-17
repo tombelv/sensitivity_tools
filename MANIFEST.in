@@ -1,0 +1,10 @@
+include README.md
+include LICENSE
+include pyproject.toml
+include pixi.toml
+include verify_install.py
+recursive-include src/sensitivity_tools *.py
+recursive-include tests *.py
+recursive-include examples *.py
+global-exclude __pycache__
+global-exclude *.py[co]

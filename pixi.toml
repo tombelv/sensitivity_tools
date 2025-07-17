@@ -1,0 +1,62 @@
+[project]
+name = "sensitivity-tools"
+description = "A package for computing closed-loop sensitivity of dynamical systems"
+authors = ["Tommaso Belvedere <tommaso.belv@gmail.com>"]
+channels = ["conda-forge", "pytorch"]
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
+
+[dependencies]
+python = ">=3.8"
+numpy = ">=1.20.0"
+pip = "*"
+
+[pypi-dependencies]
+sensitivity-tools = { path = ".", editable = true }
+
+[feature.jax.dependencies]
+jax = ">=0.4.0"
+
+[feature.casadi.pypi-dependencies]
+casadi = ">=3.6.0"
+
+[feature.torch.dependencies]
+pytorch = ">=1.12.0"
+
+[feature.dev.dependencies]
+pytest = ">=6.0"
+pytest-cov = "*"
+black = "*"
+isort = "*"
+flake8 = "*"
+mypy = "*"
+pre-commit = "*"
+twine = "*"
+
+[feature.all.dependencies]
+
+[feature.all.pypi-dependencies]
+jax = "*"
+torch = "*"
+casadi = "*"
+
+[environments]
+default = { solve-group = "default" }
+jax = { features = ["jax"], solve-group = "default" }
+casadi = { features = ["casadi"], solve-group = "default" }
+torch = { features = ["torch"], solve-group = "default" }
+all = { features = ["all"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
+
+[tasks]
+test = "pytest tests/"
+test-cov = "pytest --cov=sensitivity_tools tests/"
+lint = "flake8 src/sensitivity_tools/"
+format = "black src/sensitivity_tools/"
+sort-imports = "isort src/sensitivity_tools/"
+type-check = "mypy src/sensitivity_tools/"
+install-dev = "pip install -e ."
+build = "pip install build && python -m build"
+publish = "twine upload dist/*"
+clean = "rm -rf build/ dist/ *.egg-info/"
+verify = "python verify_install.py"
+example = "python examples/pendulum_example.py"

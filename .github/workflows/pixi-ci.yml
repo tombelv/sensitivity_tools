@@ -1,0 +1,119 @@
+name: CI/CD with Pixi
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [published]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]  # Removed windows-latest to match pixi.toml platforms
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup pixi
+      uses: prefix-dev/setup-pixi@v0.5.1
+      with:
+        pixi-version: latest
+        
+    - name: Install dependencies
+      run: pixi install
+      
+    - name: Install package in development mode
+      run: pixi run install-dev
+      
+    - name: Run tests
+      run: pixi run test
+      
+    - name: Run tests with coverage
+      run: pixi run test-cov
+      
+    - name: Verify installation
+      run: pixi run verify
+      
+    - name: Run example
+      run: pixi run example
+      
+    - name: Check code formatting
+      run: pixi run format --check
+      
+    - name: Type checking
+      run: pixi run type-check
+      
+  test-backends:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        backend: [jax, casadi, torch, all]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup pixi
+      uses: prefix-dev/setup-pixi@v0.5.1
+      with:
+        pixi-version: latest
+        
+    - name: Test ${{ matrix.backend }} backend
+      run: |
+        pixi shell ${{ matrix.backend }} --no-capture-output --activate "pip install -e . && python verify_install.py"
+        
+  build:
+    needs: [test, test-backends]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup pixi
+      uses: prefix-dev/setup-pixi@v0.5.1
+      with:
+        pixi-version: latest
+        
+    - name: Install dependencies
+      run: pixi install
+      
+    - name: Build package
+      run: pixi run build
+      
+    - name: Store build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: package-artifacts
+        path: dist/
+        
+  # publish:
+  #   needs: build
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'release'
+  #   
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #   
+  #   - name: Setup pixi
+  #     uses: prefix-dev/setup-pixi@v0.5.1
+  #     with:
+  #       pixi-version: latest
+  #       
+  #   - name: Download build artifacts
+  #     uses: actions/download-artifact@v3
+  #     with:
+  #       name: package-artifacts
+  #       path: dist/
+  #       
+  #   - name: Publish to PyPI
+  #     env:
+  #       TWINE_USERNAME: __token__
+  #       TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+  #     run: |
+  #       pixi install
+  #       pixi run publish

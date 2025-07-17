@@ -1,0 +1,151 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sensitivity-tools"
+dynamic = ["version"]
+description = "A package for computing closed-loop sensitivity of dynamical systems"
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.8"
+authors = [
+    {name = "Tommaso Belvedere", email = "tommaso.belvedere@example.com"},
+]
+keywords = [
+    "sensitivity",
+    "control",
+    "dynamical systems", 
+    "jax",
+    "casadi",
+    "pytorch",
+    "automatic differentiation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = [
+    "numpy>=1.20.0",
+]
+
+[project.optional-dependencies]
+jax = [
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
+]
+casadi = [
+    "casadi>=3.6.0",
+]
+torch = [
+    "torch>=1.12.0",
+]
+all = [
+    "jax>=0.4.0",
+    "jaxlib>=0.4.0",
+    "casadi>=3.6.0",
+    "torch>=1.12.0",
+]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+    "pre-commit",
+]
+
+[project.urls]
+Homepage = "https://github.com/tombelv/sensitivity-tools"
+Repository = "https://github.com/tombelv/sensitivity-tools"
+Documentation = "https://github.com/tombelv/sensitivity-tools"
+Issues = "https://github.com/tombelv/sensitivity-tools/issues"
+
+[tool.hatch.version]
+path = "src/sensitivity_tools/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sensitivity_tools"]
+
+[tool.hatch.envs.default]
+dependencies = [
+    "pytest",
+    "pytest-cov",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+test-cov = "pytest --cov=sensitivity_tools {args:tests}"
+cov-report = [
+    "test-cov",
+    "coverage report",
+]
+
+[tool.hatch.envs.lint]
+dependencies = [
+    "black",
+    "isort",
+    "flake8",
+    "mypy",
+]
+
+[tool.hatch.envs.lint.scripts]
+typing = "mypy --install-types --non-interactive {args:src/sensitivity_tools tests}"
+style = [
+    "isort --check-only --diff {args:.}",
+    "black --check --diff {args:.}",
+]
+fmt = [
+    "isort {args:.}",
+    "black {args:.}",
+]
+all = [
+    "style",
+    "typing",
+]
+
+[tool.black]
+target-version = ["py38"]
+line-length = 100
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.coverage.run]
+source_pkgs = ["sensitivity_tools", "tests"]
+branch = true
+parallel = true
+omit = [
+    "src/sensitivity_tools/__about__.py",
+]
+
+[tool.coverage.paths]
+sensitivity_tools = ["src/sensitivity_tools", "*/sensitivity-tools/src/sensitivity_tools"]
+tests = ["tests", "*/sensitivity-tools/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "no cov",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
