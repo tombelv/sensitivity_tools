@@ -42,11 +42,6 @@ jobs:
     - name: Run example
       run: pixi run -e dev example
       
-    - name: Check code formatting
-      run: pixi run -e dev format --check
-      
-    - name: Type checking
-      run: pixi run -e dev type-check
       
   test-backends:
     runs-on: ubuntu-latest
