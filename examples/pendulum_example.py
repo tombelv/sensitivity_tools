@@ -29,27 +29,29 @@ def main():
     # Test JAX backend
     print("\n" + "JAX Backend".center(30, "-"))
     try:
-        from sensitivity_tools.jax_models import Model
+        from sensitivity_tools.models.jax_models import Model
+        from sensitivity_tools.settings import create_model_config
         import jax.numpy as jnp
         
-        def pendulum_dynamics(state, inputs, params):
+        def pendulum_dynamics(state, inputs, params, ext=0):
             q, qdot = state[0], state[1]
             u = inputs[0]
             m, l, g, b = params
             qddot = (u - m * g * l * jnp.sin(q) - b * qdot) / (m * l**2)
             return jnp.array([qdot, qddot])
         
-        model = Model(
-            model_dynamics=pendulum_dynamics,
+        config = create_model_config(
             nq=1, nv=1, nu=1,
-            nominal_parameters=[1.0, 1.0, 9.81, 0.1]
+            p_nom=[1.0, 1.0, 9.81, 0.1],
+            dt=0.01
         )
+        
+        model = Model(config, pendulum_dynamics)
         
         state = jnp.array([0.1, 0.0])
         inputs = jnp.array([0.0])
-        dt = 0.01
         
-        next_state = model.integrate(state, inputs, dt)
+        next_state = model.integrate(state, inputs)
         print(f"✓ JAX integration: {state} -> {next_state}")
         
     except ImportError:
@@ -60,7 +62,8 @@ def main():
     # Test CasADi backend
     print("\n" + "CasADi Backend".center(30, "-"))
     try:
-        from sensitivity_tools.casadi_models import Model
+        from sensitivity_tools.models.casadi_models import Model
+        from sensitivity_tools.settings import create_model_config
         import casadi as cs
         
         def pendulum_dynamics(state, inputs, params, ext=0):
@@ -70,11 +73,13 @@ def main():
             qddot = (u - m * g * l * cs.sin(q) - b * qdot) / (m * l**2)
             return cs.vertcat(qdot, qddot)
         
-        model = Model(
-            model_dynamics_parametric=pendulum_dynamics,
+        config = create_model_config(
             nq=1, nv=1, nu=1,
-            nominal_parameters=np.array([1.0, 1.0, 9.81, 0.1])
+            p_nom=np.array([1.0, 1.0, 9.81, 0.1]),
+            dt=0.01
         )
+        
+        model = Model(config, pendulum_dynamics)
         
         state = np.array([0.1, 0.0])
         inputs = np.array([0.0])
@@ -90,27 +95,29 @@ def main():
     # Test PyTorch backend
     print("\n" + "PyTorch Backend".center(30, "-"))
     try:
-        from sensitivity_tools.torch_models import Model
+        from sensitivity_tools.models.torch_models import Model
+        from sensitivity_tools.settings import create_model_config
         import torch
         
-        def pendulum_dynamics(state, inputs, params):
+        def pendulum_dynamics(state, inputs, params, ext=0):
             q, qdot = state[0], state[1]
             u = inputs[0]
             m, l, g, b = params[0], params[1], params[2], params[3]
             qddot = (u - m * g * l * torch.sin(q) - b * qdot) / (m * l**2)
             return torch.stack([qdot, qddot])
         
-        model = Model(
-            model_dynamics=pendulum_dynamics,
+        config = create_model_config(
             nq=1, nv=1, nu=1,
-            nominal_parameters=[1.0, 1.0, 9.81, 0.1]
+            p_nom=[1.0, 1.0, 9.81, 0.1],
+            dt=0.01
         )
+        
+        model = Model(config, pendulum_dynamics)
         
         state = torch.tensor([0.1, 0.0])
         inputs = torch.tensor([0.0])
-        dt = 0.01
         
-        next_state = model.integrate(state, inputs, dt)
+        next_state = model.integrate(state, inputs)
         print(f"✓ PyTorch integration: {state} -> {next_state}")
         
     except ImportError:

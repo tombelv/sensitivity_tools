@@ -91,7 +91,7 @@ model = Model(
     nq=1,  # position dimension
     nv=1,  # velocity dimension  
     nu=1,  # input dimension
-    nominal_parameters=[1.0, 1.0, 9.81, 0.1]  # m, l, g, b
+    p_nom=[1.0, 1.0, 9.81, 0.1]  # m, l, g, b
 )
 
 # Integrate one step
@@ -122,7 +122,7 @@ def pendulum_dynamics(state, inputs, params, ext=0):
 model = Model(
     model_dynamics_parametric=pendulum_dynamics,
     nq=1, nv=1, nu=1,
-    nominal_parameters=np.array([1.0, 1.0, 9.81, 0.1])
+    p_nom=np.array([1.0, 1.0, 9.81, 0.1])
 )
 
 # Sensitivity computation
@@ -153,7 +153,7 @@ def pendulum_dynamics(state, inputs, params):
 model = Model(
     model_dynamics=pendulum_dynamics,
     nq=1, nv=1, nu=1,
-    nominal_parameters=[1.0, 1.0, 9.81, 0.1]
+    p_nom=[1.0, 1.0, 9.81, 0.1]
 )
 
 # Integrate

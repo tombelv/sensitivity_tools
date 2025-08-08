@@ -12,7 +12,8 @@ from .utils import ellipsoid_radius, ellipsoid_radii, integrate_rk4_function
 
 # JAX implementation
 try:
-    from . import jax_models
+    from .models import jax_models
+    from .models.jax_models import ellipsoid_radius_jax, ellipsoid_radii_jax
 
     _JAX_AVAILABLE = True
 except ImportError:
@@ -21,8 +22,8 @@ except ImportError:
 
 # CasADi implementation
 try:
-    from . import casadi_models
-    from .casadi_models import ellipsoid_radii_casadi
+    from .models import casadi_models
+    from .models.casadi_models import ellipsoid_radius_casadi, ellipsoid_radii_casadi
 
     _CASADI_AVAILABLE = True
 except ImportError:
@@ -31,8 +32,8 @@ except ImportError:
 
 # PyTorch implementation
 try:
-    from . import torch_models
-    from .torch_models import ellipsoid_radius_torch, ellipsoid_radii_torch
+    from .models import torch_models
+    from .models.torch_models import ellipsoid_radius_torch, ellipsoid_radii_torch
 
     _PYTORCH_AVAILABLE = True
 except ImportError:
@@ -50,8 +51,11 @@ __all__ = [
 ]
 
 # Add backend-specific functions if available
+if _JAX_AVAILABLE:
+    __all__.extend(["ellipsoid_radius_jax", "ellipsoid_radii_jax"])
+
 if _CASADI_AVAILABLE:
-    __all__.append("ellipsoid_radii_casadi")
+    __all__.extend(["ellipsoid_radius_casadi", "ellipsoid_radii_casadi"])
 
 if _PYTORCH_AVAILABLE:
     __all__.extend(["ellipsoid_radius_torch", "ellipsoid_radii_torch"])
