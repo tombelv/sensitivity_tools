@@ -8,7 +8,7 @@ with implementations in JAX, CasADi, and PyTorch.
 __version__ = "0.1.0"
 
 from .settings import INTEGRATOR_TYPES
-from .utils import ellipsoid_radius, ellipsoid_radii, integrate_rk4_function
+from .utils import ellipsoid_radius, ellipsoid_radii
 
 # JAX implementation
 try:

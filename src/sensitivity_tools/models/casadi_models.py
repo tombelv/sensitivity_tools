@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 from typing import Optional, Dict, Any, Union
-from ..utils import ellipsoid_radius, integrate_rk4_function
-from ..settings import INTEGRATOR_TYPES, ModelConfig, create_model_config
+from ..settings import INTEGRATOR_TYPES, ModelConfig
 
 try:
     import casadi as cs
@@ -13,25 +12,16 @@ except ImportError:
 class BaseModel(ABC):
     """Base class for CasADi-based sensitivity models"""
     
-    def __init__(self, nq: int, nv: int, nu: int, np: int = 0, input_bounds=(-float('inf'), float('inf'))):
+    def __init__(self, nq: int, nv: int, nu: int, ny: int, np: int, next: int, input_bounds):
         self.nq = nq  # number of generalized coordinates = dim(qpos)
         self.nv = nv  # number of degrees of freedom = dim(qvel)
         self.nx = nq + nv
         self.nu = nu  # number of control inputs
+        self.ny = ny
         self.np = np  # number of parameters
-        self.next = 0  # number of external variables (default)
+        self.next = next  # number of external variables (default)
         self.input_bounds = input_bounds
         self.p_nom = []
-
-    @abstractmethod
-    def integrate(self, state, inputs, dt: float = 0.01):
-        """Integrate the system one step forward"""
-        pass
-
-    @abstractmethod
-    def sensitivity_step(self, state, inputs, state_sensitivity, input_sensitivity, dt: float = 0.01):
-        """Compute sensitivity propagation"""
-        pass
 
 
 class ModelParametric(BaseModel):
@@ -43,17 +33,25 @@ class ModelParametric(BaseModel):
         nq: int,
         nv: int,
         nu: int,
-        np: int = 0,
-        input_bounds=(-float('inf'), float('inf')),
-        integrator_type: str = "si_euler",
-        integrator_params: Optional[Dict] = None,
-        next: int = 0,
+        np: int,
+        ny:int,
+        next: int,
+        input_bounds,
+        integrator_params,
+        controller=None
     ):
-        super().__init__(nq, nv, nu, np, input_bounds)
         
-        self.next = next  # number of external variables
+        super().__init__(nq, nv, nu, np, ny, next, input_bounds)
+        
         self.dynamics_parametric = model_dynamics_parametric
-        self.integrator_type = integrator_type
+        self.controller = controller  # Initialize controller as None
+        if controller is not None:
+            self._setup_controller_sensitivity(controller)
+        else:
+            self.controller_sens = None
+        
+        integrator_type = integrator_params["method"]
+        self.dt = integrator_params["step_size"]
         
         if integrator_type == INTEGRATOR_TYPES[0]:  # si_euler
             self.integrate_parametric = self.integrate_si_euler
@@ -72,8 +70,16 @@ class ModelParametric(BaseModel):
         # Create symbolic variables for sensitivity computation
         self._setup_sensitivity_functions()
         
-        # Initialize controller sensitivity function (will be set up later if controller is provided)
-        self.controller_sens = None
+    @property
+    def controller(self):
+        return self._controller
+    @controller.setter
+    def controller(self, value):
+        self._controller = value
+        if value is not None:
+            self._setup_controller_sensitivity(value)
+        else:
+            self.controller_sens = None
     
     def _setup_sensitivity_functions(self):
         """Setup CasADi functions for sensitivity computation"""
@@ -87,7 +93,7 @@ class ModelParametric(BaseModel):
         dt = cs.MX.sym('dt', 1, 1)
         
         # Integrate one step
-        x_kp1 = self.integrate_parametric(x, u, p, dt, ext)
+        x_kp1 = self.integrate_parametric(x, u, p, ext, dt)
         
         # Compute Jacobians
         dfdx = cs.jacobian(x_kp1, x)
@@ -103,17 +109,10 @@ class ModelParametric(BaseModel):
             {"cse": True}
         )
     
-    def setup_controller_sensitivity(self, controller, ny):
-        """Setup controller sensitivity function for closed-loop computations"""
-        if cs is None:
-            raise ImportError("CasADi is required for controller sensitivity")
-            
-        if controller is None:
-            self.controller_sens = None
-            return
+    def _setup_controller_sensitivity(self, controller):
             
         x = cs.MX.sym('x', self.nx, 1)
-        ref = cs.MX.sym('ref', ny, 1)
+        ref = cs.MX.sym('ref', self.ny, 1)
         p = cs.MX.sym('p', self.np, 1)
         ext_sym = cs.MX.sym('ext', self.next, 1)
         
@@ -129,7 +128,7 @@ class ModelParametric(BaseModel):
             {"cse": True},
         )
 
-    def integrate_rk4(self, state, inputs, params, dt: float, ext=0):
+    def integrate_rk4(self, state, inputs, params, ext, dt):
         """One-step integration using RK4 method"""
         k1 = self.dynamics_parametric(state, inputs, params, ext)
         k2 = self.dynamics_parametric(state + k1 * dt / 2.0, inputs, params, ext)
@@ -137,11 +136,11 @@ class ModelParametric(BaseModel):
         k4 = self.dynamics_parametric(state + k3 * dt, inputs, params, ext)
         return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
-    def integrate_euler(self, state, inputs, params, dt: float, ext=0):
+    def integrate_euler(self, state, inputs, params, ext, dt):
         """One-step integration using Euler method"""
         return state + dt * self.dynamics_parametric(state, inputs, params, ext)
 
-    def integrate_si_euler(self, state, inputs, params, dt: float, ext=0):
+    def integrate_si_euler(self, state, inputs, params, ext, dt):
         """Semi-implicit Euler integration"""
         v_kp1 = (
             state[self.nq :] + dt * self.dynamics_parametric(state, inputs, params, ext)[self.nq :]
@@ -152,14 +151,14 @@ class ModelParametric(BaseModel):
             v_kp1,
         )
 
-    def sensitivity_step(self, state, inputs, state_sensitivity, input_gains, dt, ext=0):
+    def sensitivity_step(self, state, inputs, state_sensitivity, input_gains, ext, dt):
         """Compute open-loop sensitivity propagation"""
         p_sens_state, p_sens_inputs, p_sens_params = self.partial_sens_all(
             state, inputs, self.p_nom, ext, dt
         )
         return (p_sens_state + p_sens_inputs @ input_gains) @ state_sensitivity + p_sens_params
 
-    def sensitivity_step_closed_loop(self, state, reference, params, state_sensitivity, dt, ext=0):
+    def sensitivity_step_closed_loop(self, state, reference, params, state_sensitivity, ext, dt):
         """Compute closed-loop sensitivity propagation"""
         # In this case, inputs are some exogenous variables that enter the controller
         if self.controller is None:
@@ -170,7 +169,7 @@ class ModelParametric(BaseModel):
             
         inputs = self.controller(state, reference, params, ext)
 
-        state_sens_all = self.partial_sens_all(state, inputs, params, ext, self.dt)
+        state_sens_all = self.partial_sens_all(state, inputs, params, ext, dt)
 
         p_sens_state = state_sens_all[0]
         p_sens_inputs = state_sens_all[1]
@@ -183,20 +182,15 @@ class ModelParametric(BaseModel):
             p_sens_state + p_sens_inputs @ input_sens_state
         ) @ state_sensitivity + p_sens_params, inputs
 
-    def integrate(self, state, inputs, dt: float = 0.01, ext=0):
-        """Integrate with nominal parameters"""
-        return self.integrate_parametric(state, inputs, self.p_nom, dt, ext)
 
 
 
 class Model(ModelParametric):
-    """
-    CasADi model with fixed nominal parameters using ModelConfig interface.
-    """
+
     
     def __init__(self, config: ModelConfig, model_dynamics, controller=None):
         """
-        Initialize the Model with ModelConfig interface.
+        CasADi model with ModelConfig interface.
         
         Args:
             config: ModelConfig object containing all model parameters
@@ -217,40 +211,35 @@ class Model(ModelParametric):
         
         # Create ModelParametric with config parameters
         super().__init__(
-            model_dynamics,
-            nq=config.nq,
-            nv=config.nv,
-            nu=config.nu,
-            np=np_val,
-            integrator_type=config.integrator_params.get("method", "si_euler"),
-            next=config.next,
+            model_dynamics, 
+            config.nq, 
+            config.nv, 
+            config.nu,
+            config.ny, 
+            np_val, 
+            config.next,
+            input_bounds=(-float('inf'), float('inf')),
+            integrator_params=config.integrator_params,
+            controller=controller,
         )
         
         # Store additional config parameters
         self.p_nom = p_nom
-        self.dt = config.dt
         self.controller = controller
         self.ny = config.ny
         
-        # Setup controller sensitivity if controller is provided
-        if controller is not None:
-            self.setup_controller_sensitivity(controller, config.ny)
     
     def integrate(self, state, inputs, ext=0):
         """Integrate the system one step forward"""
-        return self.integrate_parametric(state, inputs, self.p_nom, self.dt, ext)
+        return self.integrate_parametric(state, inputs, self.p_nom, ext, self.dt)
 
-    def sensitivity_step(self, state, inputs, state_sensitivity, input_gains, ext=None):
+    def sensitivity_step(self, state, inputs, state_sensitivity, input_gains, ext=0):
         """Compute open-loop sensitivity propagation with fixed parameters"""
-        if ext is None:
-            ext = 0
-        return super().sensitivity_step(state, inputs, state_sensitivity, input_gains, self.dt, ext)
+        return super().sensitivity_step(state, inputs, state_sensitivity, input_gains, ext, self.dt)
 
-    def sensitivity_step_closed_loop(self, state, reference, state_sensitivity, ext=None):
+    def sensitivity_step_closed_loop(self, state, reference, state_sensitivity, ext=0):
         """Compute closed-loop sensitivity propagation with fixed parameters"""
-        if ext is None:
-            ext = 0
-        return super().sensitivity_step_closed_loop(state, reference, self.p_nom, state_sensitivity, self.dt, ext)
+        return super().sensitivity_step_closed_loop(state, reference, self.p_nom, state_sensitivity, ext, self.dt)
 
 
 

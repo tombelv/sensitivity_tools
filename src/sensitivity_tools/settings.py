@@ -25,7 +25,7 @@ class ModelConfig:
     dt: float  # time step
     
     # Optional fields (with defaults)
-    ny: int = 0  # number of outputs (for controllers)
+    ny: int  # number of outputs (for controllers)
     next: int = 0  # number of external variables
     
     # Parameters
@@ -67,7 +67,7 @@ def create_model_config(
     p_nom: Union[list, Any] = None,
     dt: float = 0.0,
     integrator_type: str = "si_euler",
-    ny: int = 0,
+    ny: int = None,
     next: int = 0,
     input_bounds: Union[tuple, Any] = (-float('inf'), float('inf')),
     device: Optional[Any] = None,
@@ -112,6 +112,9 @@ def create_model_config(
     if "step_size" not in integrator_params:
         integrator_params["step_size"] = dt
         
+    if ny is None:
+        ny = nu
+
     return ModelConfig(
         nq=nq,
         nv=nv,

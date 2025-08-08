@@ -9,11 +9,12 @@ from ..settings import INTEGRATOR_TYPES
 
 
 class BaseModel(ABC):
-    def __init__(self, nq: int, nv: int, nu: int, np: int, next: int, input_bounds):
+    def __init__(self, nq: int, nv: int, nu: int, ny: int, np: int, next: int, input_bounds):
         self.nq = nq  # number of generalized coordinates = dim(qpos)
         self.nv = nv  # number of degrees of freedom = dim(qvel)
         self.nx = nq + nv
         self.nu = nu  # number of control inputs
+        self.ny = ny
         self.np = np
         self.next = next  # number of external variables
         if jnp.array_equal(input_bounds, (-jnp.inf, jnp.inf)):
@@ -33,6 +34,7 @@ class ModelParametric(BaseModel):
         nq: int,
         nv: int,
         nu: int,
+        ny: int,
         np: int,
         next: int,
         input_bounds,
@@ -40,12 +42,14 @@ class ModelParametric(BaseModel):
         controller=None
     ):
 
-        super().__init__(nq, nv, nu, np, next, input_bounds)
+        super().__init__(nq, nv, nu, np, ny, next, input_bounds)
 
         self.dynamics_parametric = model_dynamics_parametric
         self.controller = controller  # Initialize controller as None
         if controller is not None:
             self.controller_sens = jax.jacfwd(controller, argnums=0)
+        else:
+            self.controller_sens = None
 
         integrator_type = integrator_params["method"]
         self.dt = integrator_params["step_size"]
@@ -67,6 +71,18 @@ class ModelParametric(BaseModel):
             )
 
         self.partial_sens_all = jax.jacfwd(self.integrate_parametric, argnums=(0, 1, 2))
+
+    @property
+    def controller(self):
+        return self._controller
+    @controller.setter
+    def controller(self, value):
+        if value is not None:
+            self._controller = value
+            self.controller_sens = jax.jacfwd(value, argnums=0)
+        else:
+            self._controller = None
+            self.controller_sens = None
 
     @partial(jax.jit, static_argnums=(0,))
     def integrate_rk4(self, state, inputs, params, ext, dt: float):
@@ -159,6 +175,7 @@ class Model(ModelParametric):
             config.nq, 
             config.nv, 
             config.nu, 
+            config.ny,
             len(p_nom), 
             config.next,
             input_bounds=(-jnp.inf, jnp.inf),
