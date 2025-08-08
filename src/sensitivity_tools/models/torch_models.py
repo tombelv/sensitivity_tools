@@ -20,26 +20,20 @@ from ..settings import INTEGRATOR_TYPES
 
 class BaseModel(ABC):
     """Base class for PyTorch-based sensitivity models"""
-
-    def __init__(
-        self,
-        nq: int,
-        nv: int,
-        nu: int,
-        np: int = 0,
-        input_bounds: Union[tuple, Any] = (-float('inf'), float('inf')),
-        device: Optional[Any] = None,
-    ):
+    
+    def __init__(self, nq: int, nv: int, nu: int, ny: int, np: int, next: int, input_bounds, device: Optional[Any] = None):
         if not _TORCH_AVAILABLE:
             raise ImportError("PyTorch is required for this module")
-
+            
         self.nq = nq  # number of generalized coordinates = dim(qpos)
         self.nv = nv  # number of degrees of freedom = dim(qvel)
         self.nx = nq + nv
         self.nu = nu  # number of control inputs
-        self.np = np
+        self.ny = ny
+        self.np = np  # number of parameters
+        self.next = next  # number of external variables (default)
         self.device = device or torch.device('cpu')
-
+        
         if isinstance(input_bounds, tuple) and input_bounds == (-float('inf'), float('inf')):
             self.input_min = torch.full((self.nu,), input_bounds[0], device=self.device)
             self.input_max = torch.full((self.nu,), input_bounds[1], device=self.device)
@@ -47,37 +41,7 @@ class BaseModel(ABC):
             self.input_min = torch.tensor(input_bounds[0], device=self.device)
             self.input_max = torch.tensor(input_bounds[1], device=self.device)
 
-        self.p_nom = torch.tensor([], device=self.device)
-
-    def get_nq(self):
-        return self.nq
-
-    @abstractmethod
-    def integrate(self, state: Any, inputs: Any, dt: float) -> Any:
-        pass
-
-    def integrate_sim(self, state: Any, inputs: Any, dt: float) -> Any:
-        return self.integrate(state, inputs, dt)
-
-    @abstractmethod
-    def integrate_rollout(self, state: Any, inputs: Any, dt: float) -> Any:
-        pass
-
-    @abstractmethod
-    def integrate_rollout_single(self, state: Any, inputs: Any, dt: float) -> Any:
-        pass
-
-    @abstractmethod
-    def sensitivity_step(
-        self,
-        state: Any,
-        inputs: Any,
-        params: Any,
-        state_sensitivity: Any,
-        input_gains: Any,
-        dt: float,
-    ) -> Any:
-        pass
+        self.p_nom = []
 
 
 class ModelParametric(BaseModel):
@@ -89,17 +53,26 @@ class ModelParametric(BaseModel):
         nq: int,
         nv: int,
         nu: int,
-        np: int = 0,
-        input_bounds: Union[tuple, Any] = (-float('inf'), float('inf')),
-        integrator_type: str = "si_euler",
-        integrator_params: Optional[Dict] = None,
+        ny: int,
+        np: int,
+        next: int,
+        input_bounds,
+        integrator_params,
+        controller=None,
         device: Optional[Any] = None,
     ):
 
-        super().__init__(nq, nv, nu, np, input_bounds, device)
+        super().__init__(nq, nv, nu, ny, np, next, input_bounds, device)
 
         self.dynamics_parametric = model_dynamics_parametric
-        self.controller = None  # Initialize controller as None
+        self.controller = controller  # Initialize controller as None
+        if controller is not None:
+            self._setup_controller_sensitivity(controller)
+        else:
+            self.controller_sens = None
+
+        integrator_type = integrator_params["method"]
+        self.dt = integrator_params["step_size"]
 
         if integrator_type == INTEGRATOR_TYPES[0]:  # si_euler
             self.integrate_parametric = self.integrate_si_euler
@@ -111,14 +84,38 @@ class ModelParametric(BaseModel):
             self.integrate_parametric = model_dynamics_parametric
         else:
             raise ValueError(
-                f"""
-            Integrator type '{integrator_type}' not supported.
-            Available types: {INTEGRATOR_TYPES}
-            """
+                f"Integrator type '{integrator_type}' not supported. "
+                f"Available types: {INTEGRATOR_TYPES}"
             )
 
         # Setup forward mode automatic differentiation functions
         self._setup_forward_mode_functions()
+
+    def _setup_controller_sensitivity(self, controller):
+        """Setup controller sensitivity computation"""
+        if not _TORCH_AVAILABLE:
+            raise ImportError("PyTorch is required for controller sensitivity")
+        
+        def controller_wrapper(state_ctrl, reference, params, ext):
+            return controller(state_ctrl, reference, params, ext)
+        
+        # Create the jacobian function
+        self.controller_sens = jacfwd(controller_wrapper, argnums=0)
+        
+
+
+    @property
+    def controller(self):
+        return self._controller
+    
+    @controller.setter
+    def controller(self, value):
+        self._controller = value
+        if value is not None:
+            self._setup_controller_sensitivity(value)
+        else:
+            self.controller_sens = None
+
 
     def _setup_forward_mode_functions(self):
         """Setup forward mode automatic differentiation functions"""
@@ -126,31 +123,22 @@ class ModelParametric(BaseModel):
             raise ImportError("PyTorch is required for forward mode automatic differentiation")
         
         # Create wrapper functions for jacfwd
-        def integrate_wrapper_state(state, inputs, params, dt, ext=0):
-            return self.integrate_parametric(state, inputs, params, dt, ext)
+        def integrate_wrapper_state(state, inputs, params, ext, dt):
+            return self.integrate_parametric(state, inputs, params, ext, dt)
         
-        def integrate_wrapper_inputs(inputs, state, params, dt, ext=0):
-            return self.integrate_parametric(state, inputs, params, dt, ext)
+        def integrate_wrapper_inputs(inputs, state, params, ext, dt):
+            return self.integrate_parametric(state, inputs, params, ext, dt)
         
-        def integrate_wrapper_params(params, state, inputs, dt, ext=0):
-            return self.integrate_parametric(state, inputs, params, dt, ext)
+        def integrate_wrapper_params(params, state, inputs, ext, dt):
+            return self.integrate_parametric(state, inputs, params, ext, dt)
         
         # Create forward mode Jacobian functions
         self.jacfwd_state = jacfwd(integrate_wrapper_state, argnums=0)
         self.jacfwd_inputs = jacfwd(integrate_wrapper_inputs, argnums=0)
         self.jacfwd_params = jacfwd(integrate_wrapper_params, argnums=0)
         
-        # Compile functions for better performance
-        try:
-            self.jacfwd_state = torch.compile(self.jacfwd_state)
-            self.jacfwd_inputs = torch.compile(self.jacfwd_inputs)
-            self.jacfwd_params = torch.compile(self.jacfwd_params)
-        except Exception:
-            print("Warning: torch.compile failed for jacfwd functions. ")
-            # torch.compile may not be available in all PyTorch versions
-            pass
 
-    def integrate_rk4(self, state: Any, inputs: Any, params: Any, dt: float, ext=0) -> Any:
+    def integrate_rk4(self, state: Any, inputs: Any, params: Any, ext, dt: float) -> Any:
         """
         One-step integration of the dynamics using RK4 method
         """
@@ -160,13 +148,13 @@ class ModelParametric(BaseModel):
         k4 = self.dynamics_parametric(state + k3 * dt, inputs, params, ext)
         return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
-    def integrate_euler(self, state: Any, inputs: Any, params: Any, dt: float, ext=0) -> Any:
+    def integrate_euler(self, state: Any, inputs: Any, params: Any, ext, dt: float) -> Any:
         """
         One-step integration of the dynamics using Euler method
         """
         return state + dt * self.dynamics_parametric(state, inputs, params, ext)
 
-    def integrate_si_euler(self, state: Any, inputs: Any, params: Any, dt: float, ext=0) -> Any:
+    def integrate_si_euler(self, state: Any, inputs: Any, params: Any, ext, dt: float) -> Any:
         """
         Semi-implicit Euler integration.
         """
@@ -206,32 +194,12 @@ class ModelParametric(BaseModel):
             Next state sensitivity matrix (nx, np)
         """
         # Compute Jacobians using forward mode AD
-        p_sens_state = self.jacfwd_state(state, inputs, params, dt, ext)  # (nx, nx)
-        p_sens_inputs = self.jacfwd_inputs(inputs, state, params, dt, ext)  # (nx, nu)
-        p_sens_params = self.jacfwd_params(params, state, inputs, dt, ext)  # (nx, np)
+        p_sens_state = self.jacfwd_state(state, inputs, params, ext, dt)  # (nx, nx)
+        p_sens_inputs = self.jacfwd_inputs(inputs, state, params, ext, dt)  # (nx, nu)
+        p_sens_params = self.jacfwd_params(params, state, inputs, ext, dt)  # (nx, np)
 
         return (p_sens_state + p_sens_inputs @ input_gains) @ state_sensitivity + p_sens_params
 
-    def sensitivity_step_open_loop(
-        self,
-        state: Any,
-        inputs: Any,
-        params: Any,
-        state_sensitivity: Any,
-        input_gains: Any,
-        dt: float,
-        ext=0,
-    ) -> Any:
-        """
-        Compute open-loop sensitivity step using forward mode automatic differentiation
-        """
-        # Compute Jacobians using forward mode AD
-        p_sens_state = self.jacfwd_state(state, inputs, params, dt, ext)
-        p_sens_inputs = self.jacfwd_inputs(inputs, state, params, dt, ext)
-        p_sens_params = self.jacfwd_params(params, state, inputs, dt, ext)
-
-        s_sens_input = input_gains
-        return (p_sens_state + p_sens_inputs @ s_sens_input) @ state_sensitivity + p_sens_params
 
     def sensitivity_step_closed_loop(
         self,
@@ -251,16 +219,11 @@ class ModelParametric(BaseModel):
         inputs = self.controller(state, reference, params, ext)
 
         # Compute Jacobians using forward mode AD
-        p_sens_state = self.jacfwd_state(state, inputs, params, dt, ext)
-        p_sens_inputs = self.jacfwd_inputs(inputs, state, params, dt, ext)
-        p_sens_params = self.jacfwd_params(params, state, inputs, dt, ext)
+        p_sens_state = self.jacfwd_state(state, inputs, params, ext, dt)
+        p_sens_inputs = self.jacfwd_inputs(inputs, state, params, ext, dt)
+        p_sens_params = self.jacfwd_params(params, state, inputs, ext, dt)
 
-        # Compute controller sensitivity using forward mode AD
-        def controller_wrapper(state_ctrl):
-            return self.controller(state_ctrl, reference, params, ext)
-        
-        controller_jacfwd = jacfwd(controller_wrapper, argnums=0)
-        input_sens_state = controller_jacfwd(state)
+        input_sens_state = self.controller_sens(state, reference, params, ext)
 
         return (
             p_sens_state + p_sens_inputs @ input_sens_state
@@ -295,43 +258,34 @@ class Model(ModelParametric):
             config.nq,
             config.nv,
             config.nu,
+            config.ny,
             len(p_nom),
+            config.next,
             input_bounds=(-float('inf'), float('inf')),
-            integrator_type=config.integrator_params.get("method", "si_euler"),
+            integrator_params=config.integrator_params,
+            controller=controller,
             device=device,
         )
 
         self.p_nom = torch.tensor(p_nom, device=self.device)
-        self.dt = config.dt
         self.controller = controller
-        self.ny = config.ny
-        self.next = config.next
-
-        self.integrate_rollout_single = self.integrate
         
         # Add torch.compile support for better performance
-        self._setup_compiled_functions()
+        self._compile()
 
-    def _setup_compiled_functions(self):
+    def _compile(self):
         """Setup compiled functions for better performance"""
-        try:
-            # Compile integration function
-            self.integrate_compiled = torch.compile(self.integrate)
-            
-            # Compile sensitivity functions
-            self.sensitivity_step_open_loop_compiled = torch.compile(self.sensitivity_step_open_loop)
-            self.sensitivity_step_closed_loop_compiled = torch.compile(self.sensitivity_step_closed_loop)
-            
-        except Exception:
-            # torch.compile may not be available in all PyTorch versions
-            # Fall back to non-compiled versions
-            self.integrate_compiled = self.integrate
-            self.sensitivity_step_open_loop_compiled = self.sensitivity_step_open_loop
-            self.sensitivity_step_closed_loop_compiled = self.sensitivity_step_closed_loop
+        # Compile integration function
+        self.integrate = torch.compile(self.integrate)
+        
+        # Compile sensitivity functions
+        self.sensitivity_step = torch.compile(self.sensitivity_step)
+        
+        self.sensitivity_step_closed_loop = torch.compile(self.sensitivity_step_closed_loop)
 
     def integrate(self, state, inputs, ext=0):
         """Integrate the system one step forward"""
-        return self.integrate_parametric(state, inputs, self.p_nom, self.dt, ext)
+        return self.integrate_parametric(state, inputs, self.p_nom, ext, self.dt)
 
     def sensitivity_step(self, state, inputs, state_sensitivity, input_gains, ext=0):
         """Compute open-loop sensitivity propagation with fixed parameters"""
@@ -341,15 +295,6 @@ class Model(ModelParametric):
         """Compute closed-loop sensitivity propagation with fixed parameters"""
         return super().sensitivity_step_closed_loop(state, reference, self.p_nom, state_sensitivity, self.dt, ext)
 
-    def sensitivity_step_open_loop(self, state, inputs, state_sensitivity, input_gains, ext=0):
-        """Compute open-loop sensitivity propagation with fixed parameters"""
-        return super().sensitivity_step_open_loop(state, inputs, self.p_nom, state_sensitivity, input_gains, self.dt, ext)
-
-    def integrate_rollout(self, state: Any, inputs: Any, dt: float) -> Any:
-        return self.integrate(state, inputs, dt)
-
-    def integrate_rollout_single(self, state: Any, inputs: Any, dt: float) -> Any:
-        return self.integrate(state, inputs, dt)
 
 
 def ellipsoid_radius_torch(

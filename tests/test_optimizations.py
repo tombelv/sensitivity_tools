@@ -37,11 +37,11 @@ def simple_controller(state, reference, params, ext=0):
     # Simple proportional controller: u = -params[2] * v + reference
     return -params[2] * v + reference
 
-def simple_dynamics(state, inputs, params, dt, ext=0):
-    """Simple linear dynamics for CasADi: x_dot = -params[0]*x + params[1]*u (for 2-state case)"""
+def simple_dynamics(state, inputs, params, ext=0):
+    """Simple linear dynamics for CasADi: returns state derivatives"""
     if cs is None:
         # Fallback for when CasADi is not available
-        return state + dt * (-params[0] * state + params[1] * inputs)
+        return -params[0] * state + params[1] * inputs
     
     # For CasADi, handle the full state vector properly
     # Assume nq=2, nv=2, so state has 4 elements [q1, q2, v1, v2]
@@ -57,8 +57,8 @@ def simple_dynamics(state, inputs, params, dt, ext=0):
     
     return cs.vertcat(q_dot, v_dot)
 
-def simple_dynamics_torch(state, inputs, params, dt, ext=0):
-    """Simple linear dynamics for PyTorch: same structure as CasADi"""
+def simple_dynamics_torch(state, inputs, params, ext=0):
+    """Simple linear dynamics for PyTorch: returns state derivatives"""
     # Handle the full state vector properly
     # Assume nq=2, nv=2, so state has 4 elements [q1, q2, v1, v2]
     # Apply dynamics only to velocity part
@@ -73,8 +73,8 @@ def simple_dynamics_torch(state, inputs, params, dt, ext=0):
     
     return torch.cat([q_dot, v_dot])
 
-def simple_dynamics_jax(state, inputs, params, dt, ext=0):
-    """Simple linear dynamics for JAX: same structure as CasADi"""
+def simple_dynamics_jax(state, inputs, params, ext=0):
+    """Simple linear dynamics for JAX: returns state derivatives"""
     # Handle the full state vector properly
     # Assume nq=2, nv=2, so state has 4 elements [q1, q2, v1, v2]
     # Apply dynamics only to velocity part
