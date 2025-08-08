@@ -5,6 +5,7 @@ A Python package for computing closed-loop sensitivity of dynamical systems with
 ## Features
 
 - **Multi-backend support**: JAX, CasADi, and PyTorch implementations
+- **High-performance computing**: JIT compilation (JAX), symbolic computation (CasADi), and torch.compile optimization (PyTorch)
 - **Multiple integrators**: Semi-implicit Euler, Euler, RK4, and custom discrete integrators
 - **Sensitivity computation**: Automatic differentiation for computing sensitivities with respect to states, inputs, and parameters
 - **Ellipsoid analysis**: Tools for computing ellipsoid radii for uncertainty propagation
@@ -74,10 +75,11 @@ pip install sensitivity-tools[all]
 
 ```python
 import jax.numpy as jnp
-from sensitivity_tools.jax_models import Model
+from sensitivity_tools.models.jax_models import Model
+from sensitivity_tools.settings import create_model_config
 
 # Define your dynamics function
-def pendulum_dynamics(state, inputs, params):
+def pendulum_dynamics(state, inputs, params, ext):
     q, qdot = state[0], state[1]
     u = inputs[0]
     m, l, g, b = params
@@ -85,21 +87,23 @@ def pendulum_dynamics(state, inputs, params):
     qddot = (u - m * g * l * jnp.sin(q) - b * qdot) / (m * l**2)
     return jnp.array([qdot, qddot])
 
-# Create model
-model = Model(
-    model_dynamics=pendulum_dynamics,
+# Create model configuration
+config = create_model_config(
     nq=1,  # position dimension
     nv=1,  # velocity dimension  
     nu=1,  # input dimension
-    p_nom=[1.0, 1.0, 9.81, 0.1]  # m, l, g, b
+    p_nom=[1.0, 1.0, 9.81, 0.1],  # m, l, g, b
+    dt=0.01
 )
+
+# Create model
+model = Model(config, pendulum_dynamics)
 
 # Integrate one step
 state = jnp.array([0.1, 0.0])  # [q, qdot]
 inputs = jnp.array([0.0])      # [u]
-dt = 0.01
 
-next_state = model.integrate(state, inputs, dt)
+next_state = model.integrate(state, inputs)
 ```
 
 ### CasADi Example
@@ -107,7 +111,8 @@ next_state = model.integrate(state, inputs, dt)
 ```python
 import casadi as cs
 import numpy as np
-from sensitivity_tools.casadi_models import Model
+from sensitivity_tools.models.casadi_models import Model
+from sensitivity_tools.settings import create_model_config
 
 # Define dynamics
 def pendulum_dynamics(state, inputs, params, ext=0):
@@ -118,16 +123,23 @@ def pendulum_dynamics(state, inputs, params, ext=0):
     qddot = (u - m * g * l * cs.sin(q) - b * qdot) / (m * l**2)
     return cs.vertcat(qdot, qddot)
 
-# Create model
-model = Model(
-    model_dynamics_parametric=pendulum_dynamics,
+# Create model configuration
+config = create_model_config(
     nq=1, nv=1, nu=1,
-    p_nom=np.array([1.0, 1.0, 9.81, 0.1])
+    p_nom=np.array([1.0, 1.0, 9.81, 0.1]),
+    dt=0.01
 )
 
-# Sensitivity computation
+# Create model
+model = Model(config, pendulum_dynamics)
+
+# Integration
 state = np.array([0.1, 0.0])
 inputs = np.array([0.0])
+
+next_state = model.integrate(state, inputs)
+
+# Sensitivity computation
 state_sensitivity = np.eye(2)  # 2x2 identity
 input_sensitivity = np.zeros((1, 2))  # 1x2 matrix
 
@@ -138,10 +150,11 @@ sensitivity = model.sensitivity_step(state, inputs, state_sensitivity, input_sen
 
 ```python
 import torch
-from sensitivity_tools.torch_models import Model
+from sensitivity_tools.models.torch_models import Model
+from sensitivity_tools.settings import create_model_config
 
 # Define dynamics
-def pendulum_dynamics(state, inputs, params):
+def pendulum_dynamics(state, inputs, params, ext):
     q, qdot = state[0], state[1]
     u = inputs[0]
     m, l, g, b = params[0], params[1], params[2], params[3]
@@ -149,19 +162,21 @@ def pendulum_dynamics(state, inputs, params):
     qddot = (u - m * g * l * torch.sin(q) - b * qdot) / (m * l**2)
     return torch.stack([qdot, qddot])
 
-# Create model
-model = Model(
-    model_dynamics=pendulum_dynamics,
+# Create model configuration
+config = create_model_config(
     nq=1, nv=1, nu=1,
-    p_nom=[1.0, 1.0, 9.81, 0.1]
+    p_nom=[1.0, 1.0, 9.81, 0.1],
+    dt=0.01
 )
+
+# Create model
+model = Model(config, pendulum_dynamics)
 
 # Integrate
 state = torch.tensor([0.1, 0.0])
 inputs = torch.tensor([0.0])
-dt = 0.01
 
-next_state = model.integrate(state, inputs, dt)
+next_state = model.integrate(state, inputs)
 ```
 
 ## API Reference
@@ -184,6 +199,7 @@ next_state = model.integrate(state, inputs, dt)
 - `ellipsoid_radius()`: Compute ellipsoid radii for uncertainty analysis
 - `ellipsoid_radii()`: Compute all coordinate axis radii
 - `integrate_rk4_function()`: Standalone RK4 integrator
+
 
 ## Development
 
@@ -256,15 +272,6 @@ pixi shell casadi
 # Start development with all backends
 pixi shell all
 ```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Run the test suite
-6. Submit a pull request
 
 ## License
 
